@@ -1,20 +1,43 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, forwardRef, useImperativeHandle, useCallback } from 'react'
 import { MeshTransmissionMaterial, Text, Edges, Sparkles, CameraShake } from '@react-three/drei'
 import { RigidBody } from '@react-three/rapier'
 import { FloatingItem } from './FloatingItem'
 import { soundManager } from '../utils/SoundManager'
 import * as THREE from 'three'
 
-export const VendingMachine = () => {
-    const [items, setItems] = useState<{ id: number; position: [number, number, number] }[]>([])
+const GEOMETRIES = ['octahedron', 'icosahedron', 'dodecahedron'] as const
+
+export type VendingMachineHandle = {
+    spawnItem: () => void
+    reset: () => void
+    getCount: () => number
+}
+
+type VendingMachineProps = {
+    sparklesEnabled?: boolean
+    sparklesIntensity?: number
+    lightTopIntensity?: number
+    lightBottomIntensity?: number
+    maxItems?: number
+}
+
+export const VendingMachine = forwardRef<VendingMachineHandle, VendingMachineProps>((props, ref) => {
+    const MAX_ITEMS = props.maxItems ?? 50
+    const [items, setItems] = useState<{ id: number; position: [number, number, number]; geometry: typeof GEOMETRIES[number]; hue: number }[]>([])
     const [hovered, setHovered] = useState(false)
     const [shakeIntensity, setShakeIntensity] = useState(0)
     const buttonRef = useRef<THREE.Group>(null)
 
-    const spawnItem = () => {
+    const spawnItem = useCallback(() => {
         soundManager.playSpawnSound()
         const id = Date.now()
-        setItems([...items, { id, position: [0, 2, 0] }])
+        const geometry = GEOMETRIES[Math.floor(Math.random() * GEOMETRIES.length)]
+        const hue = Math.random()
+        const position: [number, number, number] = [0, 2, 0]
+        setItems(prev => {
+            const next = [...prev, { id, position, geometry, hue }]
+            return next.length > MAX_ITEMS ? next.slice(next.length - MAX_ITEMS) : next
+        })
 
         // Trigger Juice
         setShakeIntensity(1)
@@ -27,7 +50,17 @@ export const VendingMachine = () => {
                 if (buttonRef.current) buttonRef.current.position.z = 0
             }, 100)
         }
-    }
+    }, [MAX_ITEMS])
+
+    const reset = useCallback(() => {
+        setItems([])
+    }, [])
+
+    useImperativeHandle(ref, () => ({
+        spawnItem,
+        reset,
+        getCount: () => items.length,
+    }), [spawnItem, reset, items.length])
 
     return (
         <group>
@@ -89,8 +122,8 @@ export const VendingMachine = () => {
             </Text>
 
             {/* Internal Light */}
-            <pointLight position={[0, 2, 0]} intensity={20} distance={10} color="#00ffff" />
-            <pointLight position={[0, -2, 0]} intensity={10} distance={10} color="#ff00ff" />
+            <pointLight position={[0, 2, 0]} intensity={props.lightTopIntensity ?? 20} distance={10} color="#00ffff" />
+            <pointLight position={[0, -2, 0]} intensity={props.lightBottomIntensity ?? 10} distance={10} color="#ff00ff" />
 
             {/* Glass Front */}
             <mesh position={[0, 0.25, 1.5]}>
@@ -134,14 +167,14 @@ export const VendingMachine = () => {
             </group>
 
             {/* Sparkles on Spawn */}
-            {shakeIntensity > 0 && (
-                <Sparkles count={50} scale={4} size={6} speed={0.4} opacity={1} color="#00ffff" position={[0, 2, 0]} />
+            {shakeIntensity > 0 && (props.sparklesEnabled ?? true) && (
+                <Sparkles count={Math.round(50 * (props.sparklesIntensity ?? 1))} scale={4} size={6 * (props.sparklesIntensity ?? 1)} speed={0.4} opacity={1} color="#00ffff" position={[0, 2, 0]} />
             )}
 
             {/* Spawned Items */}
             {items.map((item) => (
-                <FloatingItem key={item.id} position={item.position} />
+                <FloatingItem key={item.id} position={item.position} geometry={item.geometry} hue={item.hue} />
             ))}
         </group>
     )
-}
+})

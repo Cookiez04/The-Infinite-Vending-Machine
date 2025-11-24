@@ -1,14 +1,22 @@
 import { RigidBody } from '@react-three/rapier'
+import type { RapierRigidBody } from '@react-three/rapier'
+import { soundManager } from '../utils/SoundManager'
 import { useRef, useEffect, useMemo } from 'react'
 import { MeshTransmissionMaterial } from '@react-three/drei'
 import * as THREE from 'three'
 
-const GEOMETRIES = ['octahedron', 'icosahedron', 'dodecahedron'] as const
+type Geometry = 'octahedron' | 'icosahedron' | 'dodecahedron'
 
-export const FloatingItem = ({ position }: { position: [number, number, number] }) => {
-    const rigidBody = useRef<any>(null)
-    const geometryType = useMemo(() => GEOMETRIES[Math.floor(Math.random() * GEOMETRIES.length)], [])
-    const color = useMemo(() => new THREE.Color().setHSL(Math.random(), 1, 0.5), [])
+const SHARED_GEOMETRIES: Record<Geometry, THREE.BufferGeometry> = {
+    octahedron: new THREE.OctahedronGeometry(0.5, 0),
+    icosahedron: new THREE.IcosahedronGeometry(0.45, 0),
+    dodecahedron: new THREE.DodecahedronGeometry(0.4, 0),
+}
+
+
+export const FloatingItem = ({ position, geometry, hue }: { position: [number, number, number]; geometry: Geometry; hue: number }) => {
+    const rigidBody = useRef<RapierRigidBody | null>(null)
+    const color = useMemo(() => new THREE.Color().setHSL(hue, 1, 0.5), [hue])
 
     useEffect(() => {
         if (rigidBody.current) {
@@ -22,13 +30,9 @@ export const FloatingItem = ({ position }: { position: [number, number, number] 
     }, [])
 
     return (
-        <RigidBody ref={rigidBody} position={position} restitution={0.5} colliders="hull">
+        <RigidBody ref={rigidBody} position={position} restitution={0.5} colliders="hull" onCollisionEnter={() => soundManager.playBumpSound()}>
             <mesh castShadow receiveShadow>
-                {geometryType === 'octahedron' && <octahedronGeometry args={[0.5, 0]} />}
-                {geometryType === 'icosahedron' && <icosahedronGeometry args={[0.45, 0]} />}
-                {geometryType === 'dodecahedron' && <dodecahedronGeometry args={[0.4, 0]} />}
-
-                {/* Crystal Material */}
+                <primitive attach="geometry" object={SHARED_GEOMETRIES[geometry]} />
                 <MeshTransmissionMaterial
                     backside={false}
                     samples={4}
