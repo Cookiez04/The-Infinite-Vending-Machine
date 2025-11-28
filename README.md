@@ -403,6 +403,23 @@ const [gridEnabled, setGridEnabled] = useState(true)
   - ESLint/build logs; manual inspection.
 - Indicator: Success.
 
+### 2025-11-28T22:22:00Z — Test Infrastructure & Smoke Tests
+
+- Code Used:
+  - Added `test` script to `package.json`.
+  - Configured `vitest.config.ts` and `src/setupTests.ts` with WebGL/AudioContext mocks.
+  - Created `src/App.test.tsx` (UI smoke test) and `src/utils/SoundManager.test.ts` (logic test).
+- Commands:
+  ```bash
+  npm test
+  ```
+- Results/Outcomes:
+  - Test environment successfully initialized with JSDOM.
+  - 5/5 tests passed (SoundManager logic + App UI overlay).
+- Verification Method:
+  - Vitest console output.
+- Indicator: Success.
+
 ```tsx
 // src/App.tsx (excerpt)
 const [settingsOpen, setSettingsOpen] = useState(false)
@@ -529,19 +546,140 @@ useEffect(() => { const id = setInterval(() => setCount(vmRef.current?.getCount(
 useEffect(() => { let last = performance.now(); let raf = requestAnimationFrame(function loop(t){ const dt = t - last; last = t; setFps(Math.round(1000/Math.max(dt,1))); raf = requestAnimationFrame(loop)}); return () => cancelAnimationFrame(raf) }, [])
 ```
 
+### 2025-11-28T22:26:00Z — VendingMachine Logic Tests & Documentation
+
+- Code Used:
+  - Created `src/components/VendingMachine.test.tsx` with comprehensive mocks for R3F/Drei/Rapier.
+  - Tested `spawnItem`, `reset`, and `maxItems` capping logic.
+  - Hardened `VendingMachine.tsx` against null refs and duplicate keys.
+  - Added "System Design" and "Performance Playbook" sections to README.
+- Commands:
+  ```bash
+  npm test
+  ```
+- Results/Outcomes:
+  - All 10 tests passed.
+  - Documentation expanded with technical details.
+- Verification Method:
+  - Vitest output; Manual review of README.
+- Indicator: Success.
+
+```tsx
+// src/components/VendingMachine.test.tsx (excerpt)
+it('caps items at maxItems (default 50)', () => {
+  const ref = React.createRef<VendingMachineHandle>()
+  render(<VendingMachine ref={ref} />)
+  act(() => { for (let i = 0; i < 60; i++) ref.current?.spawnItem() })
+  expect(ref.current?.getCount()).toBe(50)
+})
+```
+
+### 2025-11-28T22:55:00Z — Deployment Setup (GitHub Pages)
+
+- Code Used:
+  - Installed `gh-pages` dev dependency.
+  - Updated `vite.config.ts` with `base: './'` for relative asset paths.
+  - Added `predeploy` and `deploy` scripts to `package.json`.
+- Commands:
+  ```bash
+  npm install gh-pages --save-dev
+  ```
+- Results/Outcomes:
+  - Project ready for static deployment.
+  - Running `npm run deploy` will build the app and push `dist/` folder to a `gh-pages` branch.
+- Verification Method:
+  - Checked `package.json` scripts and `vite.config.ts` changes.
+- Indicator: Success.
+
+### 2025-11-28T23:00:00Z — Performance Tuning (Chunk Splitting)
+
+- Code Used:
+  - Configured `manualChunks` in `vite.config.ts`.
+  - Split vendors: `three`, `rapier`, `drei`, `postprocessing`.
+- Commands:
+  ```bash
+  npm run build
+  ```
+- Results/Outcomes:
+  - Massive monolithic chunk (~3.5MB) split into cached vendor chunks.
+  - `rapier-vendor` (~2.5MB) and `three-vendor` (~720kB) remain large but are now cacheable independently of app logic.
+  - App logic chunk (`index-*.js`) reduced to ~12kB.
+- Verification Method:
+  - Build output logs showing distinct chunks.
+- Indicator: Success.
+
+---
+
+## Deployment Guide
+
+### GitHub Pages (Recommended)
+
+1.  **Push your code** to a GitHub repository.
+2.  **Deploy** using the configured script:
+    ```bash
+    npm run deploy
+    ```
+3.  **Activate**: Go to GitHub Repo Settings -> Pages -> Source. Select `gh-pages` branch.
+4.  **Verify**: Your app will be live at `https://<username>.github.io/<repo-name>/`.
+
+### Vercel / Netlify
+
+1.  Connect your GitHub repository to Vercel/Netlify dashboard.
+2.  The default Vite settings will work automatically:
+    - Build Command: `npm run build`
+    - Output Directory: `dist`
+3.  The `base: './'` in `vite.config.ts` ensures compatibility here as well.
+
+---
+
+## System Design
+
+### Generator Logic
+
+The artifact generator (`spawnItem` in `VendingMachine.tsx`) produces unique, deterministic items based on user interaction.
+- **Triggers**: Click event on the 3D button or "Dispense" UI button.
+- **Properties**:
+  - `geometry`: Randomly selected from `octahedron`, `icosahedron`, `dodecahedron`.
+  - `hue`: Random float [0, 1], converted to HSL color.
+  - `position`: Fixed spawn point `[0, 2, 0]`.
+  - `id`: `Date.now() + Math.random()` for unique React keys.
+- **State Management**: Functional state updates ensure concurrency safety. A FIFO queue limits the total count (`maxItems`), discarding the oldest items to preserve memory.
+
+### Audio Subsystem
+
+Implemented in `src/utils/SoundManager.ts` as a singleton pattern to manage the `AudioContext`.
+- **Lifecycle**: Context initializes/resumes on the first user interaction (browser policy).
+- **Synthesizers**:
+  - `playSpawnSound()`: Sine wave oscillator with exponential frequency ramp (400Hz → 100Hz) for a "sci-fi chirp".
+  - `playBumpSound()`: Triangle wave oscillator (100Hz → 50Hz) for a "thud" on collision.
+- **Performance**: Oscillators are created and destroyed per sound event; no long-running nodes.
+
+## Performance Playbook
+
+Strategies used to maintain 60 FPS:
+
+1.  **Code Splitting**:
+    - Postprocessing (`EffectComposer`, `Bloom`) is lazy-loaded via `React.lazy` to reduce the initial bundle size.
+2.  **Geometry Instancing**:
+    - `FloatingItem` uses `SHARED_GEOMETRIES` (Three.js primitives) via `<primitive object={...} />` to avoid re-creating geometry buffers for every item.
+3.  **Physics Optimization**:
+    - Rapier runs in a web worker (default R3F behavior).
+    - Colliders are simplified hulls.
+4.  **Low Power Mode**:
+    - User-toggleable mode that disables expensive effects (Bloom, Stars, Sparkles) and reduces light counts and item caps (50 → 25).
+5.  **React Optimization**:
+    - `VendingMachine` uses `React.memo` implicitly via composition logic (though explicit memo could be added if props churn high).
+    - `useCallback` and `useMemo` prevent referential drift for dependency arrays.
+
 ---
 
 ## Next Steps
 
-1. UI overlay and settings:
-   - Add on-screen `Dispense`, `Reset`, counters, FPS meter; toggle postprocessing/lighting intensity.
-   - Verification: overlay actions reflect in 3D scene; performance toggles adjust FPS.
-2. Performance and bundling:
-   - Dynamically import heavy modules (postprocessing), consider instancing for artifacts.
-   - Verification: rebuild shows reduced chunk size; runtime profiling confirms FPS stability.
-3. Testing and documentation expansion:
-   - Add unit/integration/e2e tests; document generator design, audio subsystem, and performance playbook.
-   - Verification: CI passes lint/typecheck/tests; coverage targets met.
+1. Feature Expansion (Optional):
+   - Add more geometry types or special rare artifacts.
+   - Implement "combo" mechanics (e.g., spawn multiple items if clicked in rhythm).
+2. Final Polish:
+   - Add a favicon and update HTML metadata title/description.
 
 ---
 

@@ -30,7 +30,7 @@ export const VendingMachine = forwardRef<VendingMachineHandle, VendingMachinePro
 
     const spawnItem = useCallback(() => {
         soundManager.playSpawnSound()
-        const id = Date.now()
+        const id = Date.now() + Math.random()
         const geometry = GEOMETRIES[Math.floor(Math.random() * GEOMETRIES.length)]
         const hue = Math.random()
         const position: [number, number, number] = [0, 2, 0]
@@ -44,10 +44,10 @@ export const VendingMachine = forwardRef<VendingMachineHandle, VendingMachinePro
         setTimeout(() => setShakeIntensity(0), 200)
 
         // Button Animation
-        if (buttonRef.current) {
+        if (buttonRef.current && buttonRef.current.position) {
             buttonRef.current.position.z = -0.1
             setTimeout(() => {
-                if (buttonRef.current) buttonRef.current.position.z = 0
+                if (buttonRef.current && buttonRef.current.position) buttonRef.current.position.z = 0
             }, 100)
         }
     }, [MAX_ITEMS])
